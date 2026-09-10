@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classic Ludo - Simran & Rafik</title>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; user-select: none; }
+        body { background: #1a1a2e; min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 10px; color: #fff; }
+        .main-card { background: #16213e; padding: 15px; border-radius: 16px; width: 100%; max-width: 440px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; }
+        h2 { color: #f39c12; margin-bottom: 5px; font-size: 20px; }
+        
+        /* Lobby Section */
+        .lobby { background: #0f3460; padding: 15px; border-radius: 10px; margin-bottom: 15px; }
+        .lobby select, .lobby input { width: 100%; padding: 10px; margin: 6px 0; border-radius: 6px; border: none; font-size: 14px; }
+        .btn-row { display: flex; gap: 10px; margin-top: 10px; }
+        .btn { flex: 1; padding: 10px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: white; }
+        .btn-green { background: #27ae60; }
+        .btn-blue { background: #2980b9; }
+
+        /* Ludo Board 15x15 Grid Layout */
+        .board-wrapper { display: flex; justify-content: center; margin: 10px 0; }
+        .ludo-board { 
+            width: 330px; height: 330px; 
+            background: #fff; 
+            display: grid; 
+            grid-template-columns: repeat(15, 1fr); 
+            grid-template-rows: repeat(15, 1fr); 
+            border: 4px solid #333; 
+            position: relative;
+        }
+
+        /* 4 Base Boxes */
+        .base { grid-row: span 6; grid-column: span 6; display: flex; justify-content: center; align-items: center; border: 1px solid #333; }
+        .base-red { background: #e74c3c; grid-area: 1 / 1 / 7 / 7; }
+        .base-green { background: #2ecc71; grid-area: 1 / 10 / 7 / 16; }
+        .base-blue { background: #3498db; grid-area: 10 / 1 / 16 / 7; }
+        .base-yellow { background: #f1c40f; grid-area: 10 / 10 / 16 / 16; }
+
+        .white-inner { width: 70%; height: 70%; background: #fff; border-radius: 12px; border: 2px solid #333; display: flex; justify-content: center; align-items: center; font-weight: bold; color: #333; font-size: 12px; text-align: center; }
+
+        /* Center Winner Area */
+        .center-home { grid-area: 7 / 7 / 10 / 10; background: conic-gradient(#e74c3c 0 90deg, #2ecc71 90deg 180deg, #f1c40f 180deg 270deg, #3498db 270deg 360deg); border: 1px solid #333; display: flex; justify-content: center; align-items: center; font-size: 18px; }
+
+        /* Common Cell Styling */
+        .c { border: 1px solid #ddd; background: #fff; display: flex; justify-content: center; align-items: center; position: relative; }
+        .bg-r { background: #ff7675 !important; }
+        .bg-g { background: #55efc4 !important; }
+        .bg-b { background: #74b9ff !important; }
+        .bg-y { background: #ffeaa7 !important; }
+
+        /* Tokens */
+        .token { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 4px rgba(0,0,0,0.6); position: absolute; z-index: 10; transition: all 0.3s; }
+        .token-red { background: #d63031; }
+        .token-blue { background: #0984e3; }
+
+        /* Status & Controls */
+        .turn-bar { display: flex; justify-content: space-between; margin: 10px 0; gap: 8px; }
+        .p-card { flex: 1; padding: 8px; border-radius: 8px; background: #0f3460; border: 2px solid transparent; font-size: 13px; }
+        .p-card.active { border-color: #f39c12; background: #1f4068; }
+
+        .dice-area { margin-top: 10px; }
+        .dice-btn { width: 100%; padding: 12px; background: #e67e22; border: none; color: white; font-weight: bold; font-size: 16px; border-radius: 8px; cursor: pointer; }
+        .dice-btn:disabled { background: #555; cursor: not-allowed; }
+        .msg { margin-top: 8px; font-size: 13px; color: #f1c40f; font-weight: bold; min-height: 18px; }
+    </style>
+</head>
+<body>
+
+    <div class="main-card">
+        <h2>🎲 Ludo Express (Classic Board)</h2>
+        <div style="font-size: 11px; color: #aaa; margin-bottom: 10px;">🔴 सिमरन vs 🔵 रफ़ीक</div>
+
+        <!-- Room Join Box -->
+        <div class="lobby" id="lobby">
+            <select id="roleSelect">
+                <option value="simran">मैं सिमरन हूँ (🔴 Red Box)</option>
+                <option value="rafik">मैं रफ़ीक हूँ (🔵 Blue Box)</option>
+            </select>
+            <input type="text" id="roomCode" placeholder="Room Code दर्ज करें (उदा: 5555)">
+            <div class="btn-row">
+                <button class="btn btn-green" onclick="createGame()">Create Room</button>
+                <button class="btn btn-blue" onclick="joinGame()">Join Room</button>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="gameScreen" style="display: none;">
+            <div class="turn-bar">
+                <div class="p-card" id="card-simran">🔴 सिमरन<br><small id="pos-simran">Home Base</small></div>
+                <div class="p-card" id="card-rafik">🔵 रफ़ीक<br><small id="pos-rafik">Home Base</small></div>
+            </div>
+
+            <div class="board-wrapper">
+                <div class="ludo-board">
+                    <!-- 4 Main Corner Homes -->
+                    <div class="base base-red"><div class="white-inner">🔴<br>सिमरन</div></div>
+                    <div class="base base-green"><div class="white-inner">💚<br>Green</div></div>
+                    <div class="base base-yellow"><div class="white-inner">💛<br>Yellow</div></div>
+                    <div class="base base-blue"><div class="white-inner">🔵<br>रफ़ीक</div></div>
+
+                    <!-- Center Finish -->
+                    <div class="center-home">👑</div>
+
+                    <!-- Red Track Pathway -->
+                    <div class="c bg-r" style="grid-area: 7/2"></div>
+                    <div class="c bg-r" style="grid-area: 8/2"></div>
+                    <div class="c bg-r" style="grid-area: 8/3"></div>
+                    <div class="c bg-r" style="grid-area: 8/4"></div>
+                    <div class="c bg-r" style="grid-area: 8/5"></div>
+                    <div class="c bg-r" style="grid-area: 8/6"></div>
+
+                    <!-- Blue Track Pathway -->
+                    <div class="c bg-b" style="grid-area: 14/7"></div>
+                    <div class="c bg-b" style="grid-area: 14/8"></div>
+                    <div class="c bg-b" style="grid-area: 13/8"></div>
+                    <div class="c bg-b" style="grid-area: 12/8"></div>
+                    <div class="c bg-b" style="grid-area: 11/8"></div>
+                    <div class="c bg-b" style="grid-area: 10/8"></div>
+
+                    <!-- Interactive Tokens -->
+                    <div class="token token-red" id="token-simran"></div>
+                    <div class="token token-blue" id="token-rafik"></div>
+                </div>
+            </div>
+
+            <div class="dice-area">
+                <button class="dice-btn" id="rollBtn" onclick="rollDice()">🎲 पासा फेंकें (<span id="diceVal">1</span>)</button>
+            </div>
+            <div class="msg" id="statusMsg">गेम शुरू हो रहा है...</div>
+        </div>
+    </div>
+
+    <script>
+        // ⚠️ अपनी Firebase Config कीज़ डालें
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+            projectId: "YOUR_PROJECT",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "YOUR_APP_ID"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let myRole = "";
+        let roomId = "";
+        let roomRef = null;
+
+        // Path positions (Grid Row / Grid Column coordinates)
+        const redPath = [
+            {r:7, c:2}, {r:8, c:2}, {r:8, c:3}, {r:8, c:4}, {r:8, c:5}, {r:8, c:6}, {r:8, c:7} // Finish inside center
+        ];
+
+        const bluePath = [
+            {r:14, c:7}, {r:14, c:8}, {r:13, c:8}, {r:12, c:8}, {r:11, c:8}, {r:10, c:8}, {r:9, c:8} // Finish inside center
+        ];
+
+        function createGame() {
+            let code = document.getElementById('roomCode').value.trim();
+            if(!code) return alert("कृपया Room Code दर्ज करें!");
+            myRole = document.getElementById('roleSelect').value;
+            roomId = code;
+            roomRef = db.ref('ludo_rooms/' + roomId);
+
+            roomRef.set({
+                simranPos: -1,
+                rafikPos: -1,
+                turn: "simran",
+                dice: 1,
+                msg: "सिमरन की बारी है!"
+            }).then(() => launchGame());
+        }
+
+        function joinGame() {
+            let code = document.getElementById('roomCode').value.trim();
+            if(!code) return alert("कृपया Room Code दर्ज करें!");
+            myRole = document.getElementById('roleSelect').value;
+            roomId = code;
+            roomRef = db.ref('ludo_rooms/' + roomId);
+
+            roomRef.once('value', snapshot => {
+                if(snapshot.exists()) launchGame();
+                else alert("Room नहीं मिला! सही कोड डालें।");
+            });
+        }
+
+        function launchGame() {
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('gameScreen').style.display = 'block';
+
+            roomRef.on('value', snapshot => {
+                const data = snapshot.val();
+                if(!data) return;
+
+                document.getElementById('diceVal').innerText = data.dice;
+                document.getElementById('statusMsg').innerText = data.msg;
+
+                // Sync Tokens on Board
+                renderToken('token-simran', redPath, data.simranPos, 3, 3);
+                renderToken('token-rafik', bluePath, data.rafikPos, 12, 3);
+
+                document.getElementById('pos-simran').innerText = data.simranPos === -1 ? "Home Base" : `Step ${data.simranPos+1}/7`;
+                document.getElementById('pos-rafik').innerText = data.rafikPos === -1 ? "Home Base" : `Step ${data.rafikPos+1}/7`;
+
+                document.getElementById('card-simran').className = "p-card " + (data.turn === "simran" ? "active" : "");
+                document.getElementById('card-rafik').className = "p-card " + (data.turn === "rafik" ? "active" : "");
+
+                document.getElementById('rollBtn').disabled = (data.turn !== myRole);
+            });
+        }
+
+        function rollDice() {
+            roomRef.once('value', snapshot => {
+                const data = snapshot.val();
+                if(data.turn !== myRole) return;
+
+                let val = Math.floor(Math.random() * 6) + 1;
+                let sPos = data.simranPos;
+                let rPos = data.rafikPos;
+                let nextTurn = myRole === "simran" ? "rafik" : "simran";
+                let text = "";
+
+                if(myRole === "simran") {
+                    if(sPos === -1) {
+                        if(val === 6) { sPos = 0; text = "🎉 6 आया! सिमरन की गोटी लाल खाने से बाहर निकली!"; }
+                        else text = `सिमरन का आया: ${val} (बाहर निकलने के लिए 6 चाहिए)`;
+                    } else if(sPos + val < redPath.length) {
+                        sPos += val;
+                        text = `सिमरan ${val} कदम आगे बढ़ी!`;
+                    }
+                } else {
+                    if(rPos === -1) {
+                        if(val === 6) { rPos = 0; text = "🎉 6 आया! रफ़ीक की गोटी नीले खाने से बाहर निकली!"; }
+                        else text = `रफ़ीक का आया: ${val} (बाहर निकलने के लिए 6 चाहिए)`;
+                    } else if(rPos + val < bluePath.length) {
+                        rPos += val;
+                        text = `रफ़ीक ${val} कदम आगे बढ़े!`;
+                    }
+                }
+
+                if(val === 6) nextTurn = myRole; // Extra Turn on 6
+
+                roomRef.update({
+                    simranPos: sPos,
+                    rafikPos: rPos,
+                    dice: val,
+                    turn: nextTurn,
+                    msg: text
+                });
+            });
+        }
+
+        function renderToken(id, path, pos, defaultRow, defaultCol) {
+            let el = document.getElementById(id);
+            if(pos === -1) {
+                el.style.gridArea = `${defaultRow} / ${defaultCol}`;
+            } else if(pos < path.length) {
+                el.style.gridArea = `${path[pos].r} / ${path[pos].c}`;
+            }
+        }
+    </script>
+</body>
+</html>
